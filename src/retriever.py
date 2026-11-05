@@ -93,13 +93,26 @@ def get_vector_store():
     return vector_store
 
 
-def retrieve_knowledge(query: str, k: int = 3):
+def retrieve_knowledge(
+    query: str,
+    k: int = 3,
+    failure_code: str | None = None
+):
+    """Retrieve relevant knowledge, optionally filtering by failure code."""
 
     vector_store = get_vector_store()
 
+    search_filter = None
+
+    if failure_code:
+        search_filter = {
+            "failure_code": failure_code
+        }
+
     results = vector_store.similarity_search(
         query=query,
-        k=k
+        k=k,
+        filter=search_filter
     )
 
     return results

@@ -5,18 +5,19 @@ from typing import TypedDict, Any
 from langgraph.graph import StateGraph, START, END
 
 from src.database import get_transaction
+from src.retriever import retrieve_knowledge
 from src.llm import llm
 
 
-# 1. Define the shared graph state
 class InvestigationState(TypedDict, total=False):
     transaction_id: str
     transaction: dict[str, Any] | None
+    knowledge: list[dict[str, Any]]
     report: str
     error: str
 
 
-# 2. Node: Retrieve transaction from SQLite
+# Node 1: Retrieve transaction from SQLite
 def retrieve_transaction(state: InvestigationState):
 
     transaction_id = state["transaction_id"]
@@ -30,54 +31,140 @@ def retrieve_transaction(state: InvestigationState):
     }
 
 
-# 3. Node: Analyse transaction using Gemini
-def analyse_transaction(state: InvestigationState):
+# Node 2: Retrieve relevant troubleshooting knowledge
+def retrieve_payment_knowledge(state: InvestigationState):
 
     transaction = state["transaction"]
 
-    print("\nAnalysing transaction using Gemini...")
+    print("\nRetrieving payment troubleshooting knowledge...")
+
+    failure_code = transaction.get("failure_code")
+
+    # Successful transactions or transactions without a failure code
+    # do not need failure-code-specific retrieval.
+    if not failure_code:
+        print("No failure code available. Skipping knowledge retrieval.")
+
+        return {
+            "knowledge": []
+        }
+
+    query = (
+        f"Troubleshooting guidance for payment failure code "
+        f"{failure_code}. Explain possible causes, investigation "
+        f"steps and recommended actions."
+    )
+
+    documents = retrieve_knowledge(
+        query=query,
+        k=3,
+        failure_code=failure_code
+    )
+
+    knowledge = []
+
+    for document in documents:
+
+        knowledge.append({
+            "failure_code": document.metadata.get("failure_code"),
+            "section": document.metadata.get("section"),
+            "content": document.page_content,
+            "source": document.metadata.get("source")
+        })
+
+    print(f"Retrieved {len(knowledge)} relevant knowledge sections.")
+
+    return {
+        "knowledge": knowledge
+    }
+
+
+# Node 3: Analyse transaction and retrieved knowledge using Gemini
+def analyse_transaction(state: InvestigationState):
+
+    transaction = state["transaction"]
+    knowledge = state.get("knowledge", [])
+
+    print("\nAnalysing transaction using Gemini with RAG context...")
 
     transaction_json = json.dumps(
         transaction,
         indent=2
     )
 
+    knowledge_context = "\n\n".join(
+        [
+            f"Source: {item['source']}\n"
+            f"Section: {item['section']}\n"
+            f"Content:\n{item['content']}"
+            for item in knowledge
+        ]
+    )
+
+    if not knowledge_context:
+        knowledge_context = (
+            "No failure-specific troubleshooting knowledge "
+            "was retrieved for this transaction."
+        )
+
     prompt = f"""
-    You are a payment failure investigation assistant.
+You are a payment failure investigation assistant.
 
-    Analyse the following transaction details.
+Investigate the transaction using the transaction data
+and the retrieved payment troubleshooting knowledge.
 
-    TRANSACTION DATA:
-    {transaction_json}
+TRANSACTION DATA:
+{transaction_json}
 
-    Instructions:
+RETRIEVED KNOWLEDGE:
+{knowledge_context}
 
-    1. Explain the transaction status.
-    2. Identify the failure reason, if applicable.
-    3. Explain the possible cause based only on the
-       provided evidence.
-    4. Recommend appropriate next investigation steps.
-    5. Mention whether human intervention is required.
+Instructions:
 
-    Important:
-    - Do not invent transaction details.
-    - Do not assume a payment was successful or failed
-      without checking its status.
-    - Distinguish confirmed facts from possible causes.
-    - Never claim that you have initiated a refund,
-      retry or other payment operation.
+1. Explain the current transaction status.
+2. Identify the failure reason, if applicable.
+3. Explain possible causes based on the transaction data
+   and retrieved knowledge.
+4. Recommend appropriate investigation steps.
+5. Mention whether human intervention is required.
+6. Clearly distinguish verified facts from possible causes.
+7. If no relevant knowledge was retrieved, mention this
+   rather than inventing troubleshooting guidance.
+8. Do not invent transaction details.
+9. Do not claim to have initiated a refund, retry or
+   any other payment operation.
 
-    Format the response as a clear investigation report.
-    """
+Structure the report using these sections:
+
+- Transaction Summary
+- Failure Analysis
+- Possible Causes
+- Recommended Investigation Steps
+- Recommended Actions
+- Human Intervention
+
+Provide a clear and concise investigation report.
+"""
 
     response = llm.invoke(prompt)
 
-    return {
-        "report": str(response.content)
-    }
+    content = response.content
+
+    if isinstance(content, str):
+        report = content
+    elif isinstance(content, list):
+        report = "\n".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+    else:
+        report = str(content)
+
+    return {"report": report}
 
 
-# 4. Node: Handle transaction not found
+# Node 4: Handle missing transactions
 def transaction_not_found(state: InvestigationState):
 
     transaction_id = state["transaction_id"]
@@ -87,59 +174,47 @@ def transaction_not_found(state: InvestigationState):
         "report": (
             "Investigation could not proceed because "
             "the transaction ID does not exist."
-        )
+        ),
+        "knowledge": []
     }
 
 
-# 5. Conditional routing function
+# Conditional routing after transaction retrieval
 def route_after_retrieval(state: InvestigationState):
 
     if state.get("transaction"):
-        return "analyse"
+        return "retrieve_knowledge"
 
     return "not_found"
 
 
-# 6. Build the LangGraph workflow
+# Build LangGraph workflow
 builder = StateGraph(InvestigationState)
 
-builder.add_node(
-    "retrieve",
-    retrieve_transaction
-)
+builder.add_node("retrieve", retrieve_transaction)
+builder.add_node("retrieve_knowledge", retrieve_payment_knowledge)
+builder.add_node("analyse", analyse_transaction)
+builder.add_node("not_found", transaction_not_found)
 
-builder.add_node(
-    "analyse",
-    analyse_transaction
-)
-
-builder.add_node(
-    "not_found",
-    transaction_not_found
-)
-
-# Define graph entry point
 builder.add_edge(START, "retrieve")
 
-# Define conditional routing
 builder.add_conditional_edges(
     "retrieve",
     route_after_retrieval,
     {
-        "analyse": "analyse",
+        "retrieve_knowledge": "retrieve_knowledge",
         "not_found": "not_found"
     }
 )
 
-# Define ending edges
+builder.add_edge("retrieve_knowledge", "analyse")
+
 builder.add_edge("analyse", END)
 builder.add_edge("not_found", END)
 
-# Compile graph
 payment_agent = builder.compile()
 
 
-# 7. Execute the agent
 def investigate_payment(transaction_id: str):
 
     initial_state = {
@@ -152,17 +227,25 @@ def investigate_payment(transaction_id: str):
 
 
 if __name__ == "__main__":
+
     transaction_id = input("Enter transaction ID: ").strip()
 
     if not transaction_id:
         print("Please enter a valid transaction ID.")
+
     else:
-        try:
-            result = investigate_payment(transaction_id)
 
-            print("\n========== INVESTIGATION REPORT ==========")
-            print(result["report"])
-            print("==========================================")
+        result = investigate_payment(transaction_id)
 
-        except Exception as e:
-            print(f"\nInvestigation failed: {e}")
+        print("\n========== INVESTIGATION REPORT ==========")
+
+        print(result["report"])
+
+        print("\n========== RETRIEVED KNOWLEDGE ==========")
+
+        for item in result.get("knowledge", []):
+            print(f"\nFailure code: {item['failure_code']}")
+            print(f"Section: {item['section']}")
+            print(item["content"])
+
+        print("\n==========================================")
