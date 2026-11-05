@@ -22,8 +22,6 @@ The application retrieves transaction information from a SQLite database, uses R
 
 ## Architecture
 
-## Architecture
-
 ```mermaid
 flowchart TD
     A[Streamlit User Interface] --> B[LangGraph Agent]
@@ -49,7 +47,7 @@ flowchart TD
 - **Human Oversight:** Keeps investigation recommendations separate from actual payment operations and records reviewer decisions.
 - **Testability:** Uses mocked LLM responses to test agent behaviour without depending on external API availability.
 
-### Investigation Workflow
+## Investigation Workflow
 
 1. The user enters a transaction ID through the Streamlit interface.
 2. The LangGraph agent retrieves the corresponding transaction from SQLite.
@@ -61,17 +59,17 @@ flowchart TD
 
 ## Technology Stack
 
-| Component | Technology |
-|---|---|
-| Programming Language | Python |
-| User Interface | Streamlit |
-| Agent Orchestration | LangGraph |
-| LLM | Google Gemini |
-| LLM Integration | LangChain |
-| Embeddings | Sentence Transformers (all-MiniLM-L6-v2) |
-| Vector Database | ChromaDB |
-| Relational Database | SQLite |
-| Testing | Pytest |
+| Component            | Technology                               |
+| -------------------- | ---------------------------------------- |
+| Programming Language | Python                                   |
+| User Interface       | Streamlit                                |
+| Agent Orchestration  | LangGraph                                |
+| LLM                  | Google Gemini                            |
+| LLM Integration      | LangChain                                |
+| Embeddings           | Sentence Transformers (all-MiniLM-L6-v2) |
+| Vector Database      | ChromaDB                                 |
+| Relational Database  | SQLite                                   |
+| Testing              | Pytest                                   |
 
 ## Project Structure
 
@@ -83,7 +81,11 @@ payment-failure-investigation-agent/
 │   └── chroma_db/
 ├── knowledge_base/
 │   └── payment_troubleshooting.md
+├── scripts/
+│   ├── check_db.py
+│   └── test_gemini.py
 ├── src/
+│   ├── __init__.py
 │   ├── agent.py
 │   ├── database.py
 │   ├── llm.py
@@ -97,7 +99,7 @@ payment-failure-investigation-agent/
 └── README.md
 ```
 
-*Note: The database and vector store are generated locally when the application is initialized and are not committed to the repository.*
+**Note:** The database and vector store are generated locally when the application is initialized and are not committed to the repository.
 
 ## Getting Started
 
@@ -113,6 +115,8 @@ git clone https://github.com/Niraimadi/payment-failure-investigation-agent.git
 cd payment-failure-investigation-agent
 ```
 
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
+
 ### 2. Create and activate a virtual environment
 
 **Windows:**
@@ -122,11 +126,15 @@ python -m venv .venv
 .venv\Scripts\activate
 ```
 
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
+
 ### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
+
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
 
 ### 4. Configure environment variables
 
@@ -137,6 +145,8 @@ GOOGLE_API_KEY=your_google_api_key
 GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
+
 Replace the placeholder with your Gemini API key.
 
 ### 5. Initialize the database
@@ -144,6 +154,8 @@ Replace the placeholder with your Gemini API key.
 ```bash
 python -m src.database
 ```
+
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
 
 This initializes the local SQLite database and the required tables.
 
@@ -153,7 +165,29 @@ This initializes the local SQLite database and the required tables.
 streamlit run app.py
 ```
 
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
+
 The application will open in your browser.
+
+## Development Scripts
+
+The `scripts/` directory contains standalone scripts for development and verification.
+
+**Test Gemini API connectivity:**
+
+```bash
+python scripts/test_gemini.py
+```
+
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
+
+**Check database tables:**
+
+```bash
+python scripts/check_db.py
+```
+
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
 
 ## Running Tests
 
@@ -162,6 +196,8 @@ Run the automated test suite from the project root:
 ```bash
 python -m pytest -v
 ```
+
+Data format:                                                RDF-Turtle                  JSON-LD                  JSON                  CSV                  RDF/XML                  Markdown                  RSS                  Atom            &#x20;
 
 The current test suite contains 8 test cases covering:
 
@@ -176,13 +212,13 @@ The LLM is mocked during agent tests to keep them independent of external API av
 
 The project uses synthetic transaction records for demonstration.
 
-| Transaction ID | Payment Method | Status | Failure Code |
-|---|---|---|---|
-| TXN-10025 | UPI | FAILED | UPI_TIMEOUT |
-| TXN-10026 | CARD | FAILED | INSUFFICIENT_FUNDS |
-| TXN-10027 | UPI | SUCCESS | — |
-| TXN-10028 | CARD | PENDING | GATEWAY_TIMEOUT |
-| TXN-10029 | NET_BANKING | FAILED | BANK_DECLINED |
+| Transaction ID | Payment Method | Status  | Failure Code       |
+| -------------- | -------------- | ------- | ------------------ |
+| TXN-10025      | UPI            | FAILED  | UPI_TIMEOUT        |
+| TXN-10026      | CARD           | FAILED  | INSUFFICIENT_FUNDS |
+| TXN-10027      | UPI            | SUCCESS | —                  |
+| TXN-10028      | CARD           | PENDING | GATEWAY_TIMEOUT    |
+| TXN-10029      | NET_BANKING    | FAILED  | BANK_DECLINED      |
 
 ## Scope and Limitations
 
