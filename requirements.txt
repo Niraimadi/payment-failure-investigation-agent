@@ -3,3 +3,7 @@ langchain-core
 langchain-google-genai>=4.0.0
 python-dotenv
 streamlit
+langchain-text-splitters
+langchain-chroma
+langchain-huggingface
+sentence-transformers
