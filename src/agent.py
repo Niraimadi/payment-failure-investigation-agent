@@ -15,6 +15,8 @@ class InvestigationState(TypedDict, total=False):
     knowledge: list[dict[str, Any]]
     report: str
     error: str
+    requires_human_review: bool
+    review_reason: str
 
 
 # Node 1: Retrieve transaction from SQLite
@@ -76,6 +78,43 @@ def retrieve_payment_knowledge(state: InvestigationState):
 
     return {
         "knowledge": knowledge
+    }
+
+
+def assess_human_review(state: InvestigationState):
+    transaction = state["transaction"]
+
+    status = transaction["status"]
+    failure_code = transaction.get("failure_code")
+    retry_count = transaction.get("retry_count", 0)
+
+    requires_review = False
+    reason = ""
+
+    if status == "PENDING":
+        requires_review = True
+        reason = "Transaction is still pending. Verify its final status."
+
+    elif failure_code in ["UPI_TIMEOUT", "GATEWAY_TIMEOUT"]:
+        requires_review = True
+        reason = (
+            "Payment timeout detected. Verify the original "
+            "transaction status with the payment provider."
+        )
+
+    elif status == "FAILED" and retry_count >= 2:
+        requires_review = True
+        reason = (
+            "Multiple payment attempts detected. "
+            "Manual verification is recommended."
+        )
+
+    print("\nAssessing human review requirement...")
+    print(f"Manual review required: {requires_review}")
+
+    return {
+        "requires_human_review": requires_review,
+        "review_reason": reason
     }
 
 
@@ -195,6 +234,7 @@ builder.add_node("retrieve", retrieve_transaction)
 builder.add_node("retrieve_knowledge", retrieve_payment_knowledge)
 builder.add_node("analyse", analyse_transaction)
 builder.add_node("not_found", transaction_not_found)
+builder.add_node("assess_review", assess_human_review)
 
 builder.add_edge(START, "retrieve")
 
@@ -207,7 +247,8 @@ builder.add_conditional_edges(
     }
 )
 
-builder.add_edge("retrieve_knowledge", "analyse")
+builder.add_edge("retrieve_knowledge", "assess_review")
+builder.add_edge("assess_review", "analyse")
 
 builder.add_edge("analyse", END)
 builder.add_edge("not_found", END)

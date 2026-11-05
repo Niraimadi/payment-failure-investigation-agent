@@ -87,11 +87,103 @@ def get_transaction(transaction_id):
         return dict(result) if result else None
 
 
-if __name__ == "__main__":
+def initialize_review_table():
+    with get_connection() as conn:
+        cursor = conn.cursor()
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS review_records (
+                review_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                transaction_id TEXT UNIQUE NOT NULL,
+                reviewer TEXT NOT NULL,
+                decision TEXT NOT NULL,
+                review_notes TEXT,
+                reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (transaction_id)
+                    REFERENCES transactions(transaction_id)
+            )
+        """)
+
+        conn.commit()
+
+    print("Review records table initialized!")
+
+
+def save_review(transaction_id, reviewer, decision, review_notes):
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO review_records (
+                transaction_id,
+                reviewer,
+                decision,
+                review_notes
+            )
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(transaction_id)
+            DO UPDATE SET
+                reviewer = excluded.reviewer,
+                decision = excluded.decision,
+                review_notes = excluded.review_notes,
+                reviewed_at = CURRENT_TIMESTAMP
+        """, (
+            transaction_id,
+            reviewer,
+            decision,
+            review_notes
+        ))
+
+        conn.commit()
+
+    return True
+
+
+def get_review(transaction_id):
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT * FROM review_records
+            WHERE transaction_id = ?
+        """, (transaction_id,))
+
+        result = cursor.fetchone()
+
+        return dict(result) if result else None
+    
+
+def get_all_reviews(limit=50):
+    with get_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT
+                r.review_id,
+                r.transaction_id,
+                t.payment_method,
+                t.failure_code,
+                t.status AS transaction_status,
+                r.reviewer,
+                r.decision,
+                r.review_notes,
+                r.reviewed_at
+            FROM review_records r
+            JOIN transactions t
+                ON r.transaction_id = t.transaction_id
+            ORDER BY r.review_id DESC
+            LIMIT ?
+        """, (limit,))
+
+        return [dict(row) for row in cursor.fetchall()]
+
+
+if __name__ == "__main__":
     initialize_database()
+    initialize_review_table()
 
     transaction = get_transaction("TXN-10025")
-
     print("\nTransaction details:")
     print(transaction)
